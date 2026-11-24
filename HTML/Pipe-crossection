@@ -1,0 +1,1803 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Soil Layers & Pipe Cross-Section Visualizer</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Sarabun & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    body {
+      font-family: 'Sarabun', 'Inter', sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+    /* Grid background for CAD feel */
+    .cad-grid-bg {
+      background-color: #0f172a;
+      background-image: 
+        radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 0),
+        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 20px 20px, 40px 40px, 40px 40px;
+      background-position: -1px -1px, -1px -1px, -1px -1px;
+    }
+    /* SVG crosshair cursor */
+    .crosshair-cursor {
+      cursor: crosshair;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col antialiased">
+
+  <!-- Header Section -->
+  <header class="bg-slate-800 border-b border-slate-700 px-4 py-3 shrink-0 flex flex-wrap items-center justify-between gap-3 shadow-md">
+    <div class="flex items-center space-x-3">
+      <div class="bg-blue-600 text-white p-2 rounded-lg shadow-inner">
+        <i class="fa-solid fa-layer-group text-xl"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-lg text-white leading-tight">โปรแกรมจำลองภาพตัดขวางชั้นดินและการวางท่อ</h1>
+        <p class="text-xs text-slate-400">Soil Layers & Pipe Cross-Section Visualizer (Civil & Hydraulics)</p>
+      </div>
+    </div>
+    
+    <!-- Quick Actions / Presets -->
+    <div class="flex items-center space-x-2">
+      <div class="relative inline-block">
+        <select id="presetSelect" onchange="loadPreset(this.value)" class="bg-slate-700 text-slate-200 text-xs rounded-lg border border-slate-600 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="" disabled selected>-- โหลดแม่แบบตัวอย่าง (Presets) --</option>
+          <option value="drainage_twin">ท่อระบายน้ำ คสล. Ø1.20ม. คู่ 2 แถว (งานถนน)</option>
+          <option value="box_culvert_triple">ท่อเหลี่ยม คสล. Box Culvert 2.50x2.00ม. 3 ช่อง (งานชลประทาน)</option>
+          <option value="single_pipe_deep">ท่อกลมเดี่ยว Ø1.50ม. วางลึกพิเศษ (งานท่อรวบรวมน้ำเสีย)</option>
+        </select>
+      </div>
+
+      <button onclick="exportSVG()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-600 transition flex items-center space-x-1">
+        <i class="fa-solid fa-file-code text-blue-400"></i>
+        <span>SVG</span>
+      </button>
+
+      <button onclick="exportPNG()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded-lg shadow transition flex items-center space-x-1">
+        <i class="fa-solid fa-download"></i>
+        <span>ส่งออก PNG</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content Layout -->
+  <div class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+    
+    <!-- LEFT SIDEBAR: Control Panel -->
+    <aside class="w-full lg:w-[430px] xl:w-[460px] bg-slate-800 border-r border-slate-700 flex flex-col shrink-0 overflow-y-auto custom-scrollbar">
+      <div class="p-4 space-y-5">
+        
+        <!-- 1. Elevation Reference Settings -->
+        <div class="bg-slate-900/60 p-3.5 rounded-xl border border-slate-700/70 shadow-sm space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-700 pb-2">
+            <h2 class="font-semibold text-sm text-blue-400 flex items-center gap-2">
+              <i class="fa-solid fa-arrows-up-down text-blue-400"></i>
+              ระดับและดินถม (Elevations & Cover Depth)
+            </h2>
+            <span class="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">m MSL / m</span>
+          </div>
+
+          <!-- Sync Mode Selector Toggle -->
+          <div class="bg-slate-800/80 p-1.5 rounded-lg border border-slate-700 flex flex-wrap items-center justify-between gap-1.5 text-[11px]">
+            <span class="text-slate-400 pl-1"><i class="fa-solid fa-link text-xs mr-1 text-cyan-400"></i>โหมดเชื่อมโยง:</span>
+            <div class="flex flex-wrap items-center gap-1">
+              <button type="button" id="btnSyncCover" onclick="setSyncMode('cover')" class="px-2 py-1 rounded transition text-xs bg-blue-600 text-white font-medium" title="ปรับดินถม -> คำนวณระดับหลังท่อและท้องท่อ">
+                ล็อกดินถม (H_cover)
+              </button>
+              <button type="button" id="btnSyncCrown" onclick="setSyncMode('crown')" class="px-2 py-1 rounded transition text-xs bg-slate-700 text-slate-300 hover:bg-slate-600" title="ปรับระดับหลังท่อ -> คำนวณดินถมและท้องท่อ">
+                ล็อกระดับหลังท่อ (Z_crown)
+              </button>
+              <button type="button" id="btnSyncInvert" onclick="setSyncMode('invert')" class="px-2 py-1 rounded transition text-xs bg-slate-700 text-slate-300 hover:bg-slate-600" title="ปรับระดับท้องท่อ -> คำนวณระดับหลังท่อและดินถม">
+                ล็อกท้องท่อ (Z_invert)
+              </button>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-[11px] text-amber-300 mb-1 font-semibold">
+                <i class="fa-solid fa-star text-[10px] mr-1"></i>ผิวดินหลัก (Z_ground)
+              </label>
+              <div class="flex items-center bg-slate-800 border-2 border-amber-400/80 rounded-lg focus-within:ring-2 focus-within:ring-amber-400 overflow-hidden shadow-sm">
+                <input type="number" id="groundEl" value="10.00" step="0.001" oninput="handleGroundInput()" onchange="handleGroundInput()" class="w-full min-w-0 bg-transparent text-amber-200 font-mono font-bold text-xs px-2.5 py-1.5 focus:outline-none">
+                <span class="text-[10px] text-amber-300 bg-slate-900/80 px-2 py-1.5 border-l border-slate-700 shrink-0">m MSL</span>
+              </div>
+            </div>
+
+            <div>
+              <label id="lblCoverField" class="block text-[11px] text-slate-300 mb-1">ดินถม (H_cover)</label>
+              <div id="boxCoverField" class="flex items-center bg-slate-800/80 border border-slate-600 rounded-lg focus-within:ring-2 focus-within:ring-cyan-500 overflow-hidden transition">
+                <input type="number" id="coverDepthInput" value="2.50" min="0" step="0.001" oninput="handleCoverInput()" onchange="handleCoverInput()" class="w-full min-w-0 bg-transparent text-cyan-300 font-mono font-bold text-xs px-2.5 py-1.5 focus:outline-none">
+                <span class="text-[10px] text-cyan-400/90 bg-slate-900/70 px-2 py-1.5 border-l border-slate-700 shrink-0">m</span>
+              </div>
+            </div>
+
+            <div>
+              <label id="lblCrownField" class="block text-[11px] text-slate-300 mb-1">หลังท่อ (Z_crown)</label>
+              <div id="boxCrownField" class="flex items-center bg-slate-800/80 border border-slate-600 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 overflow-hidden transition">
+                <input type="number" id="pipeCrownEl" value="7.50" step="0.001" oninput="handleCrownInput()" onchange="handleCrownInput()" class="w-full min-w-0 bg-transparent text-blue-300 font-mono font-bold text-xs px-2.5 py-1.5 focus:outline-none">
+                <span class="text-[10px] text-blue-400/90 bg-slate-900/70 px-2 py-1.5 border-l border-slate-700 shrink-0">m MSL</span>
+              </div>
+            </div>
+
+            <div>
+              <label id="lblInvertField" class="block text-[11px] text-slate-300 mb-1">ท้องท่อ (Z_invert)</label>
+              <div id="boxInvertField" class="flex items-center bg-slate-800/80 border border-slate-600 rounded-lg focus-within:ring-2 focus-within:ring-emerald-500 overflow-hidden transition">
+                <input type="number" id="pipeInvertEl" value="6.06" step="0.001" oninput="handleInvertInput()" onchange="handleInvertInput()" class="w-full min-w-0 bg-transparent text-emerald-300 font-mono font-bold text-xs px-2.5 py-1.5 focus:outline-none">
+                <span class="text-[10px] text-emerald-400/90 bg-slate-900/70 px-2 py-1.5 border-l border-slate-700 shrink-0">m MSL</span>
+              </div>
+            </div>
+          </div>
+
+          <div id="syncStatusNotice" class="text-[10px] text-cyan-400/90 bg-cyan-950/40 border border-cyan-800/40 rounded px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-1">
+            <span><i class="fa-solid fa-calculator mr-1"></i>สูตร: Z_crown = Z_ground - H_cover</span>
+            <span class="font-mono text-slate-300 shrink-0">Auto Sync Active</span>
+          </div>
+        </div>
+
+        <!-- 2. Pipe Geometry Settings -->
+        <div class="bg-slate-900/60 p-3.5 rounded-xl border border-slate-700/70 shadow-sm space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-700 pb-2">
+            <h2 class="font-semibold text-sm text-blue-400 flex items-center gap-2">
+              <i class="fa-solid fa-shapes text-blue-400"></i>
+              รูปทรงและขนาดท่อ (Pipe Geometry)
+            </h2>
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-300 mb-1">รูปทรงท่อ (Pipe Shape)</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" id="btnShapeCircle" onclick="setPipeShape('circular')" class="px-3 py-1.5 text-xs rounded-lg border flex items-center justify-center space-x-2 transition bg-blue-600 text-white border-blue-500">
+                <i class="fa-regular fa-circle"></i>
+                <span>ท่อกลม (Circular)</span>
+              </button>
+              <button type="button" id="btnShapeBox" onclick="setPipeShape('box')" class="px-3 py-1.5 text-xs rounded-lg border flex items-center justify-center space-x-2 transition bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700">
+                <i class="fa-regular fa-square"></i>
+                <span>ท่อเหลี่ยม (Box)</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Circular Dimensions Controls -->
+          <div id="circularInputs" class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">เส้นผ่านศูนย์กลางใน (Inner Dia, Di)</label>
+              <div class="relative">
+                <input type="number" id="innerDiameter" value="1.20" min="0.1" step="0.05" class="w-full bg-slate-800 text-white text-xs border border-slate-600 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="handlePipeSizeChange()">
+                <span class="absolute right-2 top-1.5 text-[10px] text-slate-400">m</span>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">ความหนาผนัง (Wall Thick, t)</label>
+              <div class="relative">
+                <input type="number" id="wallThickCircle" value="0.12" min="0.02" step="0.01" class="w-full bg-slate-800 text-white text-xs border border-slate-600 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="handlePipeSizeChange()">
+                <span class="absolute right-2 top-1.5 text-[10px] text-slate-400">m</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Box Culvert Dimensions Controls -->
+          <div id="boxInputs" class="grid grid-cols-3 gap-2 hidden">
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">ความกว้างใน (Wi)</label>
+              <div class="relative">
+                <input type="number" id="boxWidth" value="2.00" min="0.5" step="0.1" class="w-full bg-slate-800 text-white text-xs border border-slate-600 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="handlePipeSizeChange()">
+                <span class="absolute right-1.5 top-1.5 text-[10px] text-slate-400">m</span>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">ความสูงใน (Hi)</label>
+              <div class="relative">
+                <input type="number" id="boxHeight" value="1.50" min="0.5" step="0.1" class="w-full bg-slate-800 text-white text-xs border border-slate-600 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="handlePipeSizeChange()">
+                <span class="absolute right-1.5 top-1.5 text-[10px] text-slate-400">m</span>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">หนาผนัง (t)</label>
+              <div class="relative">
+                <input type="number" id="wallThickBox" value="0.20" min="0.05" step="0.01" class="w-full bg-slate-800 text-white text-xs border border-slate-600 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="handlePipeSizeChange()">
+                <span class="absolute right-1.5 top-1.5 text-[10px] text-slate-400">m</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Multi-Pipe / Spacing -->
+          <div class="grid grid-cols-2 gap-3 pt-1 border-t border-slate-800">
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">จำนวนท่อ (Barrels)</label>
+              <input type="number" id="numPipes" value="2" min="1" max="6" step="1" class="w-full bg-slate-800 text-white text-xs border border-slate-600 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="updateDraw()">
+            </div>
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">ระยะห่างท่อ (Spacing S)</label>
+              <div class="relative">
+                <input type="number" id="pipeSpacing" value="0.50" min="0.1" step="0.05" class="w-full bg-slate-800 text-white text-xs border border-slate-600 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="updateDraw()">
+                <span class="absolute right-2 top-1.5 text-[10px] text-slate-400">m</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Water Depth Inside Pipe -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs text-slate-300">ระดับน้ำในท่อ (Water Level %)</label>
+              <span id="waterPctLabel" class="text-xs text-cyan-400 font-mono">40%</span>
+            </div>
+            <input type="range" id="waterLevelPct" value="40" min="0" max="100" class="w-full accent-cyan-500 cursor-pointer" oninput="document.getElementById('waterPctLabel').innerText=this.value+'%'; updateDraw()">
+          </div>
+
+        </div>
+
+        <!-- 3. Bedding & Trench Settings -->
+        <div class="bg-slate-900/60 p-3.5 rounded-xl border border-slate-700/70 shadow-sm space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-700 pb-2">
+            <h2 class="font-semibold text-sm text-blue-400 flex items-center gap-2">
+              <i class="fa-solid fa-cubes text-blue-400"></i>
+              ชั้นวัสดุรองพื้นท่อ (Pipe Bedding)
+            </h2>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">ความหนารองพื้น (Thickness)</label>
+              <div class="relative">
+                <input type="number" id="beddingThick" value="0.15" min="0" step="0.05" class="w-full bg-slate-800 text-white text-xs border border-slate-600 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="updateDraw()">
+                <span class="absolute right-2 top-1.5 text-[10px] text-slate-400">m</span>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">ชนิดวัสดุรองพื้น</label>
+              <select id="beddingType" onchange="updateDraw()" class="w-full bg-slate-800 text-white text-xs border border-slate-600 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="sand">ทรายหยาบ (Sand Bedding)</option>
+                <option value="gravel">หินย่อย (Crushed Stone)</option>
+                <option value="concrete">คอนกรีตรองพื้น (Lean Concrete)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">ระยะยื่นขอบร่อง (Side Clearance)</label>
+              <div class="relative">
+                <input type="number" id="trenchClearance" value="0.50" min="0.2" step="0.05" class="w-full bg-slate-800 text-white text-xs border border-slate-600 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="updateDraw()">
+                <span class="absolute right-2 top-1.5 text-[10px] text-slate-400">m</span>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-300 mb-1">มุมสโลปร่องขุด (Trench Slope)</label>
+              <select id="trenchSlope" onchange="updateDraw()" class="w-full bg-slate-800 text-white text-xs border border-slate-600 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="0">ดิ่งตรง (1:0)</option>
+                <option value="0.25">ลาดเอียงนิดหน่อย (1:0.25)</option>
+                <option value="0.5" selected>ลาดเอียงมาตรฐาน (1:0.5)</option>
+                <option value="1.0">ลาดเอียงปลอดภัย (1:1.0)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Dynamic Soil Layers Editor -->
+        <div class="bg-slate-900/60 p-3.5 rounded-xl border border-slate-700/70 shadow-sm space-y-3">
+          <div class="flex items-center justify-between border-b border-slate-700 pb-2">
+            <h2 class="font-semibold text-sm text-blue-400 flex items-center gap-2">
+              <i class="fa-solid fa-layer-group text-blue-400"></i>
+              ชั้นดินตามธรรมชาติ (Dynamic Soil Layers)
+            </h2>
+            <button onclick="addSoilLayer()" class="bg-blue-600 hover:bg-blue-500 text-white text-[11px] px-2.5 py-1 rounded-md transition flex items-center gap-1">
+              <i class="fa-solid fa-plus"></i> เพิ่มชั้นดิน
+            </button>
+          </div>
+
+          <!-- Soil Layers Container -->
+          <div id="soilLayersList" class="space-y-2.5 max-h-[260px] overflow-y-auto custom-scrollbar pr-1">
+            <!-- Soil layer items injected by JavaScript -->
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- RIGHT MAIN CANVAS AREA -->
+    <main class="flex-1 flex flex-col bg-slate-950 relative overflow-hidden">
+      
+      <!-- Canvas Control Toolbar -->
+      <div class="bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-2 flex items-center justify-between text-xs z-10 shrink-0">
+        <div class="flex items-center space-x-4">
+          <span class="text-slate-400 font-mono flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            Cross-Section Drawing (Scale 1:1)
+          </span>
+          <div class="hidden sm:flex items-center space-x-3 text-slate-400">
+            <label class="flex items-center gap-1 cursor-pointer hover:text-white">
+              <input type="checkbox" id="chkCallouts" checked onchange="updateDraw()" class="rounded bg-slate-800 border-slate-700 text-blue-500">
+              <span>แสดงระดับสำคัญ (Callouts)</span>
+            </label>
+            <label class="flex items-center gap-1 cursor-pointer hover:text-white">
+              <input type="checkbox" id="chkGrid" checked onchange="updateDraw()" class="rounded bg-slate-800 border-slate-700 text-blue-500">
+              <span>แสดงเส้นกริด (Grid)</span>
+            </label>
+            <label class="flex items-center gap-1 cursor-pointer hover:text-white">
+              <input type="checkbox" id="chkDimensions" checked onchange="updateDraw()" class="rounded bg-slate-800 border-slate-700 text-blue-500">
+              <span>แสดงเส้นมิติ (Dimensions)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Zoom Controls -->
+        <div class="flex items-center space-x-1.5 bg-slate-800 p-1 rounded-lg border border-slate-700">
+          <button onclick="zoomIn()" class="w-7 h-7 flex items-center justify-center hover:bg-slate-700 text-slate-300 rounded transition" title="Zoom In">
+            <i class="fa-solid fa-magnifying-glass-plus"></i>
+          </button>
+          <button onclick="zoomOut()" class="w-7 h-7 flex items-center justify-center hover:bg-slate-700 text-slate-300 rounded transition" title="Zoom Out">
+            <i class="fa-solid fa-magnifying-glass-minus"></i>
+          </button>
+          <button onclick="resetZoom()" class="px-2 h-7 flex items-center justify-center hover:bg-slate-700 text-slate-300 rounded text-[11px] transition" title="Reset Zoom">
+            <i class="fa-solid fa-rotate-left mr-1"></i> Reset View
+          </button>
+        </div>
+      </div>
+
+      <!-- Interactive Drawing Area Container -->
+      <div id="svgContainer" class="flex-1 relative cad-grid-bg overflow-hidden select-none crosshair-cursor">
+        
+        <!-- Interactive Inspector HUD (Top Right overlay) -->
+        <div id="inspectorHUD" class="absolute top-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-700 text-slate-200 text-xs px-3.5 py-2.5 rounded-xl shadow-xl pointer-events-none transition-all hidden z-20 space-y-1 min-w-[180px]">
+          <div class="font-semibold text-blue-400 border-b border-slate-800 pb-1 flex items-center justify-between">
+            <span><i class="fa-solid fa-crosshairs mr-1"></i> Cursor Inspector</span>
+            <span id="hudLayerType" class="text-[10px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded">Outside</span>
+          </div>
+          <div class="flex justify-between font-mono">
+            <span class="text-slate-400">Elevation:</span>
+            <span id="hudElev" class="text-emerald-400 font-bold">+10.00 m MSL</span>
+          </div>
+          <div class="flex justify-between font-mono">
+            <span class="text-slate-400">Depth (ลึก):</span>
+            <span id="hudDepth" class="text-amber-400">0.00 m</span>
+          </div>
+          <div class="flex justify-between font-mono">
+            <span class="text-slate-400">Dist Center:</span>
+            <span id="hudDistX" class="text-slate-300">0.00 m</span>
+          </div>
+        </div>
+
+        <!-- SVG Visualizer Canvas -->
+        <svg id="mainSVG" class="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
+          <defs id="svgDefs">
+            <!-- Hatch & Texture Patterns dynamically created via JS -->
+          </defs>
+          <g id="viewportGroup">
+            <!-- Dynamic elements: Soil, Bedding, Pipe, Grid, Callout text, Dimensions, Crosshair -->
+          </g>
+        </svg>
+
+      </div>
+
+      <!-- Bottom Panel: Summary Table & Insights -->
+      <div class="bg-slate-900 border-t border-slate-800 p-3 shrink-0">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
+          
+          <!-- Key Elevations Table Summary -->
+          <div class="w-full overflow-x-auto custom-scrollbar">
+            <div class="flex items-center space-x-2 text-center min-w-[760px]">
+              <div class="bg-slate-800/80 p-2 rounded-lg border border-slate-700/80 flex-1">
+                <div class="text-[10px] text-slate-400">ผิวดิน (Ground)</div>
+                <div id="summaryGround" class="font-mono font-bold text-amber-400 text-sm">+10.00</div>
+                <div class="text-[9px] text-slate-500">m MSL</div>
+              </div>
+
+              <div class="bg-slate-800/80 p-2 rounded-lg border border-slate-700/80 flex-1">
+                <div class="text-[10px] text-slate-400">ดินถมหลังท่อ (Cover)</div>
+                <div id="summaryCover" class="font-mono font-bold text-cyan-400 text-sm">2.50 m</div>
+                <div class="text-[9px] text-slate-500">Depth (m)</div>
+              </div>
+
+              <div class="bg-slate-800/80 p-2 rounded-lg border border-slate-700/80 flex-1">
+                <div class="text-[10px] text-slate-400">หลังท่อ (Outer Crown)</div>
+                <div id="summaryCrown" class="font-mono font-bold text-blue-400 text-sm">+7.50</div>
+                <div class="text-[9px] text-slate-500">m MSL</div>
+              </div>
+
+              <div class="bg-slate-800/80 p-2 rounded-lg border border-slate-700/80 flex-1">
+                <div class="text-[10px] text-slate-400">หลังท่อใน (Inner Soffit)</div>
+                <div id="summaryInnerCrown" class="font-mono font-bold text-slate-200 text-sm">+7.38</div>
+                <div class="text-[9px] text-slate-500">m MSL</div>
+              </div>
+
+              <div class="bg-slate-800/80 p-2 rounded-lg border border-slate-700/80 flex-1">
+                <div class="text-[10px] text-slate-400">แกนท่อ (Centerline)</div>
+                <div id="summaryCenter" class="font-mono font-bold text-indigo-400 text-sm">+6.78</div>
+                <div class="text-[9px] text-slate-500">m MSL</div>
+              </div>
+
+              <div class="bg-slate-800/80 p-2 rounded-lg border border-slate-700/80 flex-1">
+                <div class="text-[10px] text-slate-400">ท้องท่อใน (Inner Invert)</div>
+                <div id="summaryInvert" class="font-mono font-bold text-emerald-400 text-sm">+6.18</div>
+                <div class="text-[9px] text-slate-500">m MSL</div>
+              </div>
+
+              <div class="bg-slate-800/80 p-2 rounded-lg border border-slate-700/80 flex-1">
+                <div class="text-[10px] text-slate-400">ท้องท่อนอก (Outer Invert)</div>
+                <div id="summaryOuterInvert" class="font-mono font-bold text-teal-300 text-sm">+6.06</div>
+                <div class="text-[9px] text-slate-500">m MSL</div>
+              </div>
+
+              <div class="bg-slate-800/80 p-2 rounded-lg border border-slate-700/80 flex-1">
+                <div class="text-[10px] text-slate-400">ฐานรองท่อ (Bedding Bot)</div>
+                <div id="summaryBedding" class="font-mono font-bold text-rose-400 text-sm">+5.91</div>
+                <div class="text-[9px] text-slate-500">m MSL</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Notification / Warning status badge -->
+          <div id="statusBadge" class="hidden md:flex items-center gap-2 bg-slate-800 px-3 py-2 rounded-lg border border-slate-700 shrink-0">
+            <i class="fa-solid fa-circle-check text-emerald-400"></i>
+            <span class="text-[11px] text-slate-300">การวางท่อผ่านเกณฑ์มาตรฐานความลึกดินถม</span>
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Notification Toast Container -->
+  <div id="toastContainer" class="fixed bottom-16 right-6 z-50 flex flex-col space-y-2 pointer-events-none"></div>
+
+  <!-- MAIN JAVASCRIPT LOGIC -->
+  <script>
+    // --- Application State ---
+    let currentShape = 'circular'; // 'circular' or 'box'
+    let syncMode = 'cover'; // 'cover' (H_cover drives Z_crown & Z_invert), 'crown' (Z_crown drives H_cover & Z_invert), or 'invert' (Z_invert drives Z_crown & H_cover)
+    let zoomLevel = 1.0;
+    let panX = 0;
+    let panY = 0;
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+
+    // Default Soil Layers
+    let soilLayers = [
+      { id: 1, name: 'ชั้นดินถม / ผิวทาง (Top Fill)', thickness: 0.80, color: '#475569', pattern: 'asphalt' },
+      { id: 2, name: 'ชั้นดินเหนียวอ่อน (Soft Clay)', thickness: 2.20, color: '#78350f', pattern: 'soft_clay' },
+      { id: 3, name: 'ชั้นทรายปนดินเหนียว (Clayey Sand)', thickness: 3.00, color: '#92400e', pattern: 'sand' },
+      { id: 4, name: 'ชั้นดินเหนียวแข็ง (Stiff Clay)', thickness: 4.00, color: '#334155', pattern: 'stiff_clay' }
+    ];
+
+    // Presets Configurations
+    const presets = {
+      drainage_twin: {
+        groundEl: 10.00,
+        pipeCrownEl: 8.20,
+        shape: 'circular',
+        innerDiameter: 1.20,
+        wallThick: 0.12,
+        numPipes: 2,
+        pipeSpacing: 0.50,
+        beddingThick: 0.15,
+        beddingType: 'sand',
+        waterLevelPct: 45,
+        soilLayers: [
+          { id: 1, name: 'ชั้นโครงสร้างทาง (Road Base)', thickness: 0.60, color: '#475569', pattern: 'asphalt' },
+          { id: 2, name: 'ชั้นดินเหนียวอ่อน (Soft Clay)', thickness: 2.50, color: '#78350f', pattern: 'soft_clay' },
+          { id: 3, name: 'ชั้นดินเหนียวแข็ง (Stiff Clay)', thickness: 4.00, color: '#334155', pattern: 'stiff_clay' }
+        ]
+      },
+      box_culvert_triple: {
+        groundEl: 12.50,
+        pipeCrownEl: 9.80,
+        shape: 'box',
+        boxWidth: 2.50,
+        boxHeight: 2.00,
+        wallThickBox: 0.25,
+        numPipes: 3,
+        pipeSpacing: 0.60,
+        beddingThick: 0.20,
+        beddingType: 'concrete',
+        waterLevelPct: 60,
+        soilLayers: [
+          { id: 1, name: 'ชั้นดินถมคันทาง (Embankment Fill)', thickness: 1.50, color: '#64748b', pattern: 'asphalt' },
+          { id: 2, name: 'ชั้นดินตะกอน (Alluvial Soil)', thickness: 3.50, color: '#78350f', pattern: 'soft_clay' },
+          { id: 3, name: 'ชั้นทรายแน่น (Dense Sand)', thickness: 4.00, color: '#92400e', pattern: 'sand' }
+        ]
+      },
+      single_pipe_deep: {
+        groundEl: 15.00,
+        pipeCrownEl: 9.50,
+        shape: 'circular',
+        innerDiameter: 1.50,
+        wallThick: 0.15,
+        numPipes: 1,
+        pipeSpacing: 0.50,
+        beddingThick: 0.20,
+        beddingType: 'gravel',
+        waterLevelPct: 35,
+        soilLayers: [
+          { id: 1, name: 'ชั้นดินถมผิวดิน (Topsoil)', thickness: 1.00, color: '#475569', pattern: 'asphalt' },
+          { id: 2, name: 'ชั้นดินเหนียวปนทราย (Sandy Clay)', thickness: 4.00, color: '#78350f', pattern: 'soft_clay' },
+          { id: 3, name: 'ชั้นดินเหนียวแข็ง (Stiff Clay)', thickness: 6.00, color: '#1e293b', pattern: 'stiff_clay' }
+        ]
+      }
+    };
+
+    function setPipeShape(shape) {
+      currentShape = shape === 'box' ? 'box' : 'circular';
+      const btnCircle = document.getElementById('btnShapeCircle');
+      const btnBox = document.getElementById('btnShapeBox');
+      const circularInputs = document.getElementById('circularInputs');
+      const boxInputs = document.getElementById('boxInputs');
+
+      const activeBtnClass = 'px-3 py-1.5 text-xs rounded-lg border flex items-center justify-center space-x-2 transition bg-blue-600 text-white border-blue-500';
+      const inactiveBtnClass = 'px-3 py-1.5 text-xs rounded-lg border flex items-center justify-center space-x-2 transition bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700';
+
+      if (btnCircle) btnCircle.className = currentShape === 'circular' ? activeBtnClass : inactiveBtnClass;
+      if (btnBox) btnBox.className = currentShape === 'box' ? activeBtnClass : inactiveBtnClass;
+      if (circularInputs) circularInputs.classList.toggle('hidden', currentShape !== 'circular');
+      if (boxInputs) boxInputs.classList.toggle('hidden', currentShape !== 'box');
+
+      if (syncMode === 'invert') {
+        syncLinkedValuesFromActiveMode();
+      }
+      updateDraw();
+    }
+
+    // --- 2-Way / 3-Way Sync Mode & Input Handlers for Cover & Elevations ---
+    function getDecimalsFromStr(str) {
+      if (!str || typeof str !== 'string') return 2;
+      const trimmed = str.trim();
+      if (!trimmed.includes('.')) return 0;
+      const frac = trimmed.split('.')[1].replace(/0+$/, '');
+      return Math.min(Math.max(frac.length, 2), 6);
+    }
+
+    function getActiveElevationDecimals() {
+      const gStr = document.getElementById('groundEl').value;
+      const cStr = document.getElementById('coverDepthInput').value;
+      const pStr = document.getElementById('pipeCrownEl').value;
+      const iStr = document.getElementById('pipeInvertEl') ? document.getElementById('pipeInvertEl').value : '';
+      return Math.max(
+        getDecimalsFromStr(gStr),
+        getDecimalsFromStr(cStr),
+        getDecimalsFromStr(pStr),
+        getDecimalsFromStr(iStr),
+        2
+      );
+    }
+
+    function getCurrentOuterPipeHeight() {
+      if (currentShape === 'circular') {
+        const innerW = parseFloat(document.getElementById('innerDiameter').value) || 1.2;
+        const wallThick = parseFloat(document.getElementById('wallThickCircle').value) || 0.12;
+        return innerW + 2 * wallThick;
+      } else {
+        const innerH = parseFloat(document.getElementById('boxHeight').value) || 1.5;
+        const wallThick = parseFloat(document.getElementById('wallThickBox').value) || 0.2;
+        return innerH + 2 * wallThick;
+      }
+    }
+
+    function getCurrentInnerHeightAndWall() {
+      if (currentShape === 'circular') {
+        const innerH = parseFloat(document.getElementById('innerDiameter').value) || 1.2;
+        const wallThick = parseFloat(document.getElementById('wallThickCircle').value) || 0.12;
+        return { innerH, wallThick, outerH: innerH + 2 * wallThick };
+      } else {
+        const innerH = parseFloat(document.getElementById('boxHeight').value) || 1.5;
+        const wallThick = parseFloat(document.getElementById('wallThickBox').value) || 0.2;
+        return { innerH, wallThick, outerH: innerH + 2 * wallThick };
+      }
+    }
+
+    function formatElevationVal(val, decimals = null) {
+      const dec = decimals !== null ? decimals : getActiveElevationDecimals();
+      const num = Number(val);
+      if (isNaN(num)) return '0.00';
+      return num.toFixed(dec);
+    }
+
+    function syncLinkedValuesFromActiveMode() {
+      const groundEl = parseFloat(document.getElementById('groundEl').value) || 10.0;
+      const elevDec = getActiveElevationDecimals();
+      const { innerH, wallThick, outerH } = getCurrentInnerHeightAndWall();
+      const pipeSpanH = wallThick + innerH; // ความหนาท่อ + ความสูงหรือเส้นผ่านศูนย์กลางท่อ
+      const crownInputEl = document.getElementById('pipeCrownEl');
+      const coverInputEl = document.getElementById('coverDepthInput');
+      const invertInputEl = document.getElementById('pipeInvertEl');
+
+      let pipeCrownEl = parseFloat(crownInputEl.value);
+      if (isNaN(pipeCrownEl)) pipeCrownEl = groundEl - 2.5;
+
+      let coverDepth = parseFloat(coverInputEl.value);
+      if (isNaN(coverDepth)) coverDepth = groundEl - pipeCrownEl;
+
+      let pipeInvertEl = invertInputEl ? parseFloat(invertInputEl.value) : (groundEl - coverDepth - pipeSpanH);
+      if (isNaN(pipeInvertEl)) pipeInvertEl = groundEl - coverDepth - pipeSpanH;
+
+      if (syncMode === 'cover') {
+        // โหมด 1: ล็อกดินถม (Z_ground = input, ดินถม = input)
+        // หลังท่อ = Z_ground - ดินถม
+        // ท้องท่อ = Z_ground - ดินถม - ความหนาท่อ - ความสูงหรือเส้นผ่านศูนย์กลางท่อ
+        pipeCrownEl = groundEl - coverDepth;
+        pipeInvertEl = groundEl - coverDepth - wallThick - innerH;
+        crownInputEl.value = formatElevationVal(pipeCrownEl, elevDec);
+        if (invertInputEl) invertInputEl.value = formatElevationVal(pipeInvertEl, elevDec);
+      } else if (syncMode === 'crown') {
+        // โหมด 2: ล็อกระดับหลังท่อ (Z_ground = input, หลังท่อ = input)
+        // ดินถม = Z_ground - หลังท่อ
+        // ท้องท่อ = หลังท่อ - ความหนาท่อ - ความสูงหรือเส้นผ่านศูนย์กลางท่อ
+        coverDepth = groundEl - pipeCrownEl;
+        pipeInvertEl = pipeCrownEl - wallThick - innerH;
+        coverInputEl.value = formatElevationVal(coverDepth, elevDec);
+        if (invertInputEl) invertInputEl.value = formatElevationVal(pipeInvertEl, elevDec);
+      } else if (syncMode === 'invert') {
+        // โหมด 3: ล็อกระดับท้องท่อ (Z_ground = input, ท้องท่อ = input)
+        // หลังท่อ = ท้องท่อ + ความหนาท่อ + ความสูงหรือเส้นผ่านศูนย์กลางท่อ
+        // ดินถม = Z_ground - หลังท่อ
+        pipeCrownEl = pipeInvertEl + wallThick + innerH;
+        coverDepth = groundEl - pipeCrownEl;
+        crownInputEl.value = formatElevationVal(pipeCrownEl, elevDec);
+        coverInputEl.value = formatElevationVal(coverDepth, elevDec);
+      }
+    }
+
+    function handleGroundInput() {
+      syncLinkedValuesFromActiveMode();
+      updateDraw();
+    }
+
+    function setSyncMode(mode) {
+      if (mode === 'crown') syncMode = 'crown';
+      else if (mode === 'invert') syncMode = 'invert';
+      else syncMode = 'cover';
+
+      const btnCover = document.getElementById('btnSyncCover');
+      const btnCrown = document.getElementById('btnSyncCrown');
+      const btnInvert = document.getElementById('btnSyncInvert');
+      const notice = document.getElementById('syncStatusNotice');
+
+      const boxCover = document.getElementById('boxCoverField');
+      const boxCrown = document.getElementById('boxCrownField');
+      const boxInvert = document.getElementById('boxInvertField');
+      const lblCover = document.getElementById('lblCoverField');
+      const lblCrown = document.getElementById('lblCrownField');
+      const lblInvert = document.getElementById('lblInvertField');
+
+      const activeClass = "px-2 py-1 rounded transition text-xs bg-blue-600 text-white font-medium";
+      const inactiveClass = "px-2 py-1 rounded transition text-xs bg-slate-700 text-slate-300 hover:bg-slate-600";
+
+      if (btnCover) btnCover.className = syncMode === 'cover' ? activeClass : inactiveClass;
+      if (btnCrown) btnCrown.className = syncMode === 'crown' ? activeClass : inactiveClass;
+      if (btnInvert) btnInvert.className = syncMode === 'invert' ? activeClass : inactiveClass;
+
+      // ไฮไลต์ตัวแปรรองที่ถูกควบคุมในโหมดนั้น และระบุช่องที่แปรผันตามผิวดิน (Z_ground)
+      const lockedBox = "flex items-center bg-slate-800 border-2 border-cyan-400/80 rounded-lg focus-within:ring-2 focus-within:ring-cyan-400 overflow-hidden transition";
+      const derivedBox = "flex items-center bg-slate-900/70 border border-slate-700/80 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 overflow-hidden transition";
+
+      if (boxCover && boxCrown && boxInvert) {
+        boxCover.className = syncMode === 'cover' ? lockedBox : derivedBox;
+        boxCrown.className = syncMode === 'crown' ? lockedBox : derivedBox;
+        boxInvert.className = syncMode === 'invert' ? lockedBox : derivedBox;
+      }
+
+      if (lblCover) {
+        lblCover.innerHTML = syncMode === 'cover'
+          ? 'ดินถม <span class="text-[9px] text-cyan-400">(ตัวแปรล็อก)</span>'
+          : 'ดินถม <span class="text-[9px] text-slate-400">(แปรผันตาม Z_ground)</span>';
+      }
+      if (lblCrown) {
+        lblCrown.innerHTML = syncMode === 'crown'
+          ? 'หลังท่อ <span class="text-[9px] text-cyan-400">(ตัวแปรล็อก)</span>'
+          : 'หลังท่อ <span class="text-[9px] text-slate-400">(แปรผันตาม Z_ground)</span>';
+      }
+      if (lblInvert) {
+        lblInvert.innerHTML = syncMode === 'invert'
+          ? 'ท้องท่อ <span class="text-[9px] text-cyan-400">(ตัวแปรล็อก)</span>'
+          : 'ท้องท่อ <span class="text-[9px] text-slate-400">(แปรผันตาม Z_ground)</span>';
+      }
+
+      if (notice) {
+        let formulaText = 'ล็อกดินถม: หลังท่อ = Z_ground - ดินถม | ท้องท่อ = Z_ground - ดินถม - t - H/D';
+        if (syncMode === 'crown') {
+          formulaText = 'ล็อกหลังท่อ: ดินถม = Z_ground - หลังท่อ | ท้องท่อ = หลังท่อ - t - H/D';
+        } else if (syncMode === 'invert') {
+          formulaText = 'ล็อกท้องท่อ: หลังท่อ = ท้องท่อ + t + H/D | ดินถม = Z_ground - หลังท่อ';
+        }
+        notice.innerHTML = `<span><i class="fa-solid fa-calculator mr-1"></i>${formulaText}</span><span class="font-mono text-slate-300">Auto Sync Active</span>`;
+      }
+
+      syncLinkedValuesFromActiveMode();
+      updateDraw();
+    }
+
+    function handleCoverInput() {
+      setSyncMode('cover');
+      syncLinkedValuesFromActiveMode();
+      updateDraw();
+    }
+
+    function handleCrownInput() {
+      setSyncMode('crown');
+      syncLinkedValuesFromActiveMode();
+      updateDraw();
+    }
+
+    function handleInvertInput() {
+      setSyncMode('invert');
+      syncLinkedValuesFromActiveMode();
+      updateDraw();
+    }
+
+    function handlePipeSizeChange() {
+      if (syncMode === 'invert') {
+        syncLinkedValuesFromActiveMode();
+      }
+      updateDraw();
+    }
+
+    // --- Soil Layers List Management ---
+    function renderSoilLayersList() {
+      const container = document.getElementById('soilLayersList');
+      container.innerHTML = '';
+
+      soilLayers.forEach((layer, index) => {
+        const item = document.createElement('div');
+        item.className = 'bg-slate-800 p-2.5 rounded-lg border border-slate-700 space-y-2';
+        item.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[11px] font-bold text-slate-400 font-mono">#${index + 1}</span>
+            <input type="text" value="${layer.name}" onchange="updateSoilLayer(${index}, 'name', this.value)" class="flex-1 bg-slate-900 text-white text-xs border border-slate-700 rounded px-2 py-1 focus:outline-none focus:border-blue-500">
+            <button onclick="removeSoilLayer(${index})" class="text-slate-500 hover:text-rose-400 p-1 transition" title="ลบชั้นดิน">
+              <i class="fa-solid fa-trash-can text-xs"></i>
+            </button>
+          </div>
+          <div class="grid grid-cols-3 gap-2 text-xs">
+            <div>
+              <span class="text-[10px] text-slate-400 block mb-0.5">หนา (ม.)</span>
+              <input type="number" value="${layer.thickness}" step="0.1" min="0.1" onchange="updateSoilLayer(${index}, 'thickness', parseFloat(this.value))" class="w-full bg-slate-900 text-white border border-slate-700 rounded px-1.5 py-0.5 text-xs">
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400 block mb-0.5">สีชั้นดิน</span>
+              <input type="color" value="${layer.color}" onchange="updateSoilLayer(${index}, 'color', this.value)" class="w-full h-7 bg-slate-900 border border-slate-700 rounded p-0.5 cursor-pointer">
+            </div>
+            <div>
+              <span class="text-[10px] text-slate-400 block mb-0.5">ลวดลาย</span>
+              <select onchange="updateSoilLayer(${index}, 'pattern', this.value)" class="w-full bg-slate-900 text-white border border-slate-700 rounded px-1 py-1 text-[11px]">
+                <option value="asphalt" ${layer.pattern==='asphalt'?'selected':''}>เฉียงถี่ (Asphalt/Fill)</option>
+                <option value="soft_clay" ${layer.pattern==='soft_clay'?'selected':''}>เส้นแนวนอน (Clay)</option>
+                <option value="sand" ${layer.pattern==='sand'?'selected':''}>จุดทราย (Sand)</option>
+                <option value="stiff_clay" ${layer.pattern==='stiff_clay'?'selected':''}>ตาข่าย (Stiff Clay)</option>
+              </select>
+            </div>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+    }
+
+    function addSoilLayer() {
+      const newId = soilLayers.length + 1;
+      soilLayers.push({
+        id: newId,
+        name: `ชั้นดินใหม่ ${newId}`,
+        thickness: 1.50,
+        color: '#475569',
+        pattern: 'sand'
+      });
+      renderSoilLayersList();
+      updateDraw();
+      showToast('เพิ่มชั้นดินใหม่แล้ว', 'success');
+    }
+
+    function removeSoilLayer(index) {
+      if (soilLayers.length <= 1) {
+        showToast('ต้องมีชั้นดินอย่างน้อย 1 ชั้น', 'error');
+        return;
+      }
+      soilLayers.splice(index, 1);
+      renderSoilLayersList();
+      updateDraw();
+      showToast('ลบชั้นดินเรียบร้อย', 'info');
+    }
+
+    function updateSoilLayer(index, field, value) {
+      if (field === 'thickness' && (isNaN(value) || value <= 0)) return;
+      soilLayers[index][field] = value;
+      updateDraw();
+    }
+
+    function loadPreset(key) {
+      const p = presets[key];
+      if (!p) return;
+
+      document.getElementById('groundEl').value = p.groundEl.toFixed(2);
+      document.getElementById('pipeCrownEl').value = p.pipeCrownEl.toFixed(2);
+      document.getElementById('coverDepthInput').value = (p.groundEl - p.pipeCrownEl).toFixed(2);
+      setPipeShape(p.shape);
+
+      if (p.shape === 'circular') {
+        document.getElementById('innerDiameter').value = p.innerDiameter;
+        document.getElementById('wallThickCircle').value = p.wallThick;
+      } else {
+        document.getElementById('boxWidth').value = p.boxWidth;
+        document.getElementById('boxHeight').value = p.boxHeight;
+        document.getElementById('wallThickBox').value = p.wallThickBox;
+      }
+
+      document.getElementById('numPipes').value = p.numPipes;
+      document.getElementById('pipeSpacing').value = p.pipeSpacing;
+      document.getElementById('beddingThick').value = p.beddingThick;
+      document.getElementById('beddingType').value = p.beddingType;
+      document.getElementById('waterLevelPct').value = p.waterLevelPct;
+      document.getElementById('waterPctLabel').innerText = p.waterLevelPct + '%';
+
+      soilLayers = JSON.parse(JSON.stringify(p.soilLayers));
+      renderSoilLayersList();
+      resetZoom();
+      updateDraw();
+      showToast('โหลดตัวอย่างแบบแปลนเรียบร้อย', 'success');
+    }
+
+    // --- SVG Patterns Definition ---
+    function initSVGPatterns() {
+      const defs = document.getElementById('svgDefs');
+      const existingStatic = defs.querySelectorAll('[data-static-def="true"]');
+      if (existingStatic.length > 0) return;
+
+      const frag = document.createDocumentFragment();
+      const wrap = document.createElement('g');
+      wrap.setAttribute('data-static-def', 'true');
+      wrap.innerHTML = `
+        <!-- Sand Dotted Pattern -->
+        <pattern id="pat_sand" width="12" height="12" patternUnits="userSpaceOnUse">
+          <circle cx="2" cy="2" r="1" fill="#ffffff" opacity="0.35"/>
+          <circle cx="8" cy="7" r="1" fill="#ffffff" opacity="0.25"/>
+          <circle cx="5" cy="10" r="0.8" fill="#ffffff" opacity="0.4"/>
+        </pattern>
+
+        <!-- Soft Clay Horizontal Pattern -->
+        <pattern id="pat_soft_clay" width="20" height="10" patternUnits="userSpaceOnUse">
+          <line x1="0" y1="5" x2="20" y2="5" stroke="#ffffff" stroke-width="0.8" opacity="0.25" stroke-dasharray="6,3"/>
+        </pattern>
+
+        <!-- Asphalt / Dense Diagonal Pattern -->
+        <pattern id="pat_asphalt" width="10" height="10" patternUnits="userSpaceOnUse">
+          <path d="M-2,2 l4,-4 M0,10 l10,-10 M8,12 l4,-4" stroke="#ffffff" stroke-width="0.9" opacity="0.3"/>
+        </pattern>
+
+        <!-- Stiff Clay Crosshatch Pattern -->
+        <pattern id="pat_stiff_clay" width="16" height="16" patternUnits="userSpaceOnUse">
+          <path d="M0,16 L16,0 M0,0 L16,16" stroke="#ffffff" stroke-width="0.7" opacity="0.2"/>
+        </pattern>
+
+        <!-- Concrete Wall Hatch -->
+        <pattern id="pat_concrete" width="14" height="14" patternUnits="userSpaceOnUse">
+          <path d="M0,14 L14,0" stroke="#94a3b8" stroke-width="1.2" opacity="0.5"/>
+          <circle cx="4" cy="4" r="0.8" fill="#cbd5e1" opacity="0.6"/>
+          <circle cx="10" cy="9" r="1" fill="#cbd5e1" opacity="0.5"/>
+        </pattern>
+
+        <!-- Gravel Bedding Pattern -->
+        <pattern id="pat_gravel" width="16" height="16" patternUnits="userSpaceOnUse">
+          <polygon points="3,3 6,1 7,5" fill="none" stroke="#ffffff" stroke-width="0.8" opacity="0.4"/>
+          <polygon points="11,10 14,8 13,13" fill="none" stroke="#ffffff" stroke-width="0.8" opacity="0.4"/>
+          <circle cx="4" cy="12" r="1" fill="#ffffff" opacity="0.3"/>
+        </pattern>
+
+        <!-- Concrete Bedding Hatch -->
+        <pattern id="pat_lean_concrete" width="10" height="10" patternUnits="userSpaceOnUse">
+          <path d="M0,10 L10,0" stroke="#cbd5e1" stroke-width="0.8" opacity="0.4"/>
+          <circle cx="7" cy="7" r="0.8" fill="#ffffff" opacity="0.5"/>
+        </pattern>
+      `;
+      while (wrap.firstChild) {
+        frag.appendChild(wrap.firstChild);
+      }
+      defs.appendChild(frag);
+    }
+
+    function clearDynamicPipeClips() {
+      const defs = document.getElementById('svgDefs');
+      defs.querySelectorAll('clipPath[id^="pipeClip_"]').forEach(el => el.remove());
+    }
+
+    // --- MAIN DRAWING CALCULATION & ENGINE ---
+    let currentCalcState = null;
+
+    function updateDraw() {
+      // 1. Read Inputs & Sync according to active mode
+      const groundEl = parseFloat(document.getElementById('groundEl').value) || 10.0;
+      const elevDec = getActiveElevationDecimals();
+      const numPipes = parseInt(document.getElementById('numPipes').value) || 1;
+      const pipeSpacing = parseFloat(document.getElementById('pipeSpacing').value) || 0.5;
+      const beddingThick = parseFloat(document.getElementById('beddingThick').value) || 0.15;
+      const beddingType = document.getElementById('beddingType').value;
+      const trenchClearance = parseFloat(document.getElementById('trenchClearance').value) || 0.5;
+      const trenchSlope = parseFloat(document.getElementById('trenchSlope').value) || 0.5;
+      const waterLevelPct = parseFloat(document.getElementById('waterLevelPct').value) || 0;
+
+      const showCallouts = document.getElementById('chkCallouts').checked;
+      const showGrid = document.getElementById('chkGrid').checked;
+      const showDimensions = document.getElementById('chkDimensions').checked;
+
+      // Pipe Dimensions
+      let innerW, innerH, wallThick, outerW, outerH;
+      if (currentShape === 'circular') {
+        innerW = parseFloat(document.getElementById('innerDiameter').value) || 1.2;
+        innerH = innerW;
+        wallThick = parseFloat(document.getElementById('wallThickCircle').value) || 0.12;
+        outerW = innerW + 2 * wallThick;
+        outerH = outerW;
+      } else {
+        innerW = parseFloat(document.getElementById('boxWidth').value) || 2.0;
+        innerH = parseFloat(document.getElementById('boxHeight').value) || 1.5;
+        wallThick = parseFloat(document.getElementById('wallThickBox').value) || 0.2;
+        outerW = innerW + 2 * wallThick;
+        outerH = innerH + 2 * wallThick;
+      }
+
+      const pipeSpanH = wallThick + innerH;
+      let pipeCrownEl = parseFloat(document.getElementById('pipeCrownEl').value) || 7.5;
+      let coverDepth = parseFloat(document.getElementById('coverDepthInput').value);
+      const invertInputEl = document.getElementById('pipeInvertEl');
+      let pipeInvertEl = invertInputEl ? parseFloat(invertInputEl.value) : (groundEl - (isNaN(coverDepth) ? (groundEl - pipeCrownEl) : coverDepth) - pipeSpanH);
+
+      if (syncMode === 'cover') {
+        if (isNaN(coverDepth)) coverDepth = groundEl - pipeCrownEl;
+        pipeCrownEl = groundEl - coverDepth;
+        pipeInvertEl = groundEl - coverDepth - wallThick - innerH;
+        document.getElementById('pipeCrownEl').value = formatElevationVal(pipeCrownEl, elevDec);
+        if (invertInputEl) invertInputEl.value = formatElevationVal(pipeInvertEl, elevDec);
+      } else if (syncMode === 'crown') {
+        coverDepth = groundEl - pipeCrownEl;
+        pipeInvertEl = pipeCrownEl - wallThick - innerH;
+        document.getElementById('coverDepthInput').value = formatElevationVal(coverDepth, elevDec);
+        if (invertInputEl) invertInputEl.value = formatElevationVal(pipeInvertEl, elevDec);
+      } else if (syncMode === 'invert') {
+        if (isNaN(pipeInvertEl)) pipeInvertEl = groundEl - coverDepth - pipeSpanH;
+        pipeCrownEl = pipeInvertEl + wallThick + innerH;
+        coverDepth = groundEl - pipeCrownEl;
+        document.getElementById('pipeCrownEl').value = formatElevationVal(pipeCrownEl, elevDec);
+        document.getElementById('coverDepthInput').value = formatElevationVal(coverDepth, elevDec);
+      }
+
+      // Calculations of Key Elevations
+      const outerCrownEl = pipeCrownEl;
+      const innerCrownEl = outerCrownEl - wallThick;
+      const centerlineEl = outerCrownEl - (outerH / 2);
+      const innerInvertEl = outerCrownEl - wallThick - innerH;
+      const outerInvertEl = syncMode === 'invert' ? pipeInvertEl : (outerCrownEl - wallThick - innerH);
+      const beddingBottomEl = outerInvertEl - beddingThick;
+      coverDepth = groundEl - (parseFloat(document.getElementById('pipeCrownEl').value) || pipeCrownEl);
+
+      // Total Pipe Group Horizontal Span
+      const totalPipesWidth = (numPipes * outerW) + ((numPipes - 1) * pipeSpacing);
+      const trenchBottomWidth = totalPipesWidth + (2 * trenchClearance);
+      
+      // Calculate Soil Depths & Lowest View Elevation
+      let totalSoilDepth = 0;
+      soilLayers.forEach(l => totalSoilDepth += l.thickness);
+      let bottomSoilEl = groundEl - totalSoilDepth;
+
+      // Ensure view includes bedding and extra foundation depth
+      const minRequiredEl = beddingBottomEl - 1.2;
+      if (bottomSoilEl > minRequiredEl) {
+        // Extend last soil layer visually or add foundation
+        const extraNeeded = bottomSoilEl - minRequiredEl;
+        soilLayers[soilLayers.length - 1].thickness += extraNeeded;
+        totalSoilDepth += extraNeeded;
+        bottomSoilEl = minRequiredEl;
+      }
+
+      // Store State for Cursor Inspector
+      currentCalcState = {
+        groundEl, outerCrownEl, innerCrownEl, centerlineEl, innerInvertEl, outerInvertEl,
+        beddingBottomEl, coverDepth, elevDec, innerW, innerH, wallThick, outerW, outerH,
+        numPipes, pipeSpacing, totalPipesWidth, beddingThick, bottomSoilEl, waterLevelPct
+      };
+
+      // Update Summary UI Cards
+      document.getElementById('summaryGround').innerText = `${groundEl >= 0 ? '+' : ''}${formatElevationVal(groundEl, elevDec)}`;
+      document.getElementById('summaryCover').innerText = `${formatElevationVal(coverDepth, elevDec)} m`;
+      document.getElementById('summaryCrown').innerText = `${outerCrownEl >= 0 ? '+' : ''}${formatElevationVal(outerCrownEl, elevDec)}`;
+      document.getElementById('summaryInnerCrown').innerText = `${innerCrownEl >= 0 ? '+' : ''}${formatElevationVal(innerCrownEl, elevDec)}`;
+      document.getElementById('summaryCenter').innerText = `${centerlineEl >= 0 ? '+' : ''}${formatElevationVal(centerlineEl, elevDec)}`;
+      document.getElementById('summaryInvert').innerText = `${innerInvertEl >= 0 ? '+' : ''}${formatElevationVal(innerInvertEl, elevDec)}`;
+      document.getElementById('summaryOuterInvert').innerText = `${outerInvertEl >= 0 ? '+' : ''}${formatElevationVal(outerInvertEl, elevDec)}`;
+      document.getElementById('summaryBedding').innerText = `${beddingBottomEl >= 0 ? '+' : ''}${formatElevationVal(beddingBottomEl, elevDec)}`;
+
+      // Status Warning Badge
+      const statusBadge = document.getElementById('statusBadge');
+      if (coverDepth < 0) {
+        statusBadge.innerHTML = `<i class="fa-solid fa-circle-exclamation text-rose-400"></i><span class="text-rose-300">เตือน: หลังท่ออยู่สูงกว่าระดับผิวดิน (H_cover < 0m)</span>`;
+        statusBadge.classList.remove('hidden');
+      } else if (coverDepth < 0.3) {
+        statusBadge.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-amber-400"></i><span class="text-amber-300">เตือน: ความลึกดินถมหลังท่อน้อยกว่า 0.30 ม. (เสี่ยงโครงสร้างเสียหาย)</span>`;
+        statusBadge.classList.remove('hidden');
+      } else if (coverDepth > 6.0) {
+        statusBadge.innerHTML = `<i class="fa-solid fa-circle-info text-cyan-400"></i><span class="text-cyan-300">ความลึกฝังท่อสูง (>6.0ม.) ควรคำนวณกำลังรับโหลดพิเศษ</span>`;
+        statusBadge.classList.remove('hidden');
+      } else {
+        statusBadge.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400"></i><span class="text-emerald-300">ระดับการวางท่อสมบูรณ์และได้มาตรฐาน</span>`;
+        statusBadge.classList.remove('hidden');
+      }
+
+      // 2. Setup World Coordinate Bounds for Canvas
+      const worldWidth = Math.max(totalPipesWidth + 6.0, (groundEl - bottomSoilEl) * 1.5);
+      const worldHeight = (groundEl - bottomSoilEl) + 1.6; // Margin top/bottom
+      
+      const minX = -worldWidth / 2;
+      const maxX = worldWidth / 2;
+      const maxY = groundEl + 0.8;
+      const minY = bottomSoilEl - 0.8;
+
+      const svg = document.getElementById('mainSVG');
+      const viewportGroup = document.getElementById('viewportGroup');
+      const containerRect = document.getElementById('svgContainer').getBoundingClientRect();
+      const svgW = containerRect.width || 800;
+      const svgH = containerRect.height || 600;
+
+      // Coordinate Mapping Functions (World -> Canvas Pixels)
+      const scaleX = (svgW - 140) / (maxX - minX);
+      const scaleY = (svgH - 100) / (maxY - minY);
+      const scale = Math.min(scaleX, scaleY) * zoomLevel;
+
+      const originX = svgW / 2 + panX;
+      const originY = 50 + (maxY - groundEl) * scale + panY;
+
+      function toPxX(x) { return originX + x * scale; }
+      function toPxY(y) { return originY + (groundEl - y) * scale; }
+      function toLen(m) { return m * scale; }
+
+      currentCalcState.toPxX = toPxX;
+      currentCalcState.toPxY = toPxY;
+      currentCalcState.toLen = toLen;
+      currentCalcState.fromPxX = (px) => (px - originX) / scale;
+      currentCalcState.fromPxY = (py) => groundEl - ((py - originY) / scale);
+      // Clear viewport and old per-pipe clip paths
+      viewportGroup.innerHTML = '';
+      clearDynamicPipeClips();
+
+      // --- A. BACKGROUND GRID & AXES ---
+      if (showGrid) {
+        let gridGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        gridGroup.setAttribute('opacity', '0.25');
+
+        // Horizontal Elevation Grids (Every 0.5m or 1.0m)
+        const stepY = (maxY - minY > 8) ? 1.0 : 0.5;
+        const startY = Math.floor(minY / stepY) * stepY;
+        for (let y = startY; y <= maxY; y += stepY) {
+          const py = toPxY(y);
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', 0);
+          line.setAttribute('y1', py);
+          line.setAttribute('x2', svgW);
+          line.setAttribute('y2', py);
+          line.setAttribute('stroke', '#64748b');
+          line.setAttribute('stroke-dasharray', y === groundEl ? '0' : '3,3');
+          gridGroup.appendChild(line);
+        }
+
+        // Vertical Grids (Every 1.0m)
+        for (let x = Math.floor(minX); x <= Math.ceil(maxX); x += 1.0) {
+          const px = toPxX(x);
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', px);
+          line.setAttribute('y1', 0);
+          line.setAttribute('x2', px);
+          line.setAttribute('y2', svgH);
+          line.setAttribute('stroke', '#64748b');
+          line.setAttribute('stroke-dasharray', x === 0 ? '0' : '4,4');
+          gridGroup.appendChild(line);
+        }
+        viewportGroup.appendChild(gridGroup);
+      }
+
+      // --- B. DRAW NATURAL SOIL LAYERS ---
+      let currentTopY = groundEl;
+      let soilGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+      soilLayers.forEach((layer, idx) => {
+        const nextTopY = currentTopY - layer.thickness;
+        const pTopY = toPxY(currentTopY);
+        const pBotY = toPxY(nextTopY);
+        const pLeftX = toPxX(minX - 2.0);
+        const pRightX = toPxX(maxX + 2.0);
+
+        // Layer Solid Background Rect
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', pLeftX);
+        rect.setAttribute('y', pTopY);
+        rect.setAttribute('width', pRightX - pLeftX);
+        rect.setAttribute('height', pBotY - pTopY);
+        rect.setAttribute('fill', layer.color);
+        rect.setAttribute('opacity', '0.65');
+        soilGroup.appendChild(rect);
+
+        // Overlay Hatch Pattern Rect
+        if (layer.pattern) {
+          const hatchRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          hatchRect.setAttribute('x', pLeftX);
+          hatchRect.setAttribute('y', pTopY);
+          hatchRect.setAttribute('width', pRightX - pLeftX);
+          hatchRect.setAttribute('height', pBotY - pTopY);
+          hatchRect.setAttribute('fill', `url(#pat_${layer.pattern})`);
+          soilGroup.appendChild(hatchRect);
+        }
+
+        // Soil Interface Line
+        if (idx > 0) {
+          const interfaceLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          interfaceLine.setAttribute('x1', pLeftX);
+          interfaceLine.setAttribute('y1', pTopY);
+          interfaceLine.setAttribute('x2', pRightX);
+          interfaceLine.setAttribute('y2', pTopY);
+          interfaceLine.setAttribute('stroke', '#cbd5e1');
+          interfaceLine.setAttribute('stroke-width', '1');
+          interfaceLine.setAttribute('stroke-dasharray', '5,3');
+          soilGroup.appendChild(interfaceLine);
+        }
+
+        // Layer Name Label in Canvas
+        const textLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        textLabel.setAttribute('x', toPxX(maxX - 0.3));
+        textLabel.setAttribute('y', pTopY + (pBotY - pTopY)/2 + 4);
+        textLabel.setAttribute('fill', '#f1f5f9');
+        textLabel.setAttribute('font-size', '11');
+        textLabel.setAttribute('font-weight', '500');
+        textLabel.setAttribute('text-anchor', 'end');
+        textLabel.setAttribute('opacity', '0.85');
+        textLabel.textContent = `${layer.name} (หนา ${layer.thickness.toFixed(2)}ม.)`;
+        soilGroup.appendChild(textLabel);
+
+        currentTopY = nextTopY;
+      });
+
+      viewportGroup.appendChild(soilGroup);
+
+      // --- C. DRAW TRENCH EXCAVATION & BEDDING LAYER ---
+      let trenchGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      
+      const trenchBotLeftX = -trenchBottomWidth / 2;
+      const trenchBotRightX = trenchBottomWidth / 2;
+      const trenchDepth = groundEl - beddingBottomEl;
+      const trenchTopLeftX = trenchBotLeftX - (trenchDepth * trenchSlope);
+      const trenchTopRightX = trenchBotRightX + (trenchDepth * trenchSlope);
+
+      // Bedding Polygon (Under Pipes)
+      const pBedTopY = toPxY(outerInvertEl);
+      const pBedBotY = toPxY(beddingBottomEl);
+      const pBedLX = toPxX(trenchBotLeftX);
+      const pBedRX = toPxX(trenchBotRightX);
+
+      // Bedding Fill Color
+      let bedFill = '#d97706'; // sand default
+      let bedPattern = 'url(#pat_sand)';
+      if (beddingType === 'gravel') {
+        bedFill = '#475569';
+        bedPattern = 'url(#pat_gravel)';
+      } else if (beddingType === 'concrete') {
+        bedFill = '#334155';
+        bedPattern = 'url(#pat_lean_concrete)';
+      }
+
+      const bedPoly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      const bedPoints = `${pBedLX},${pBedTopY} ${pBedRX},${pBedTopY} ${pBedRX},${pBedBotY} ${pBedLX},${pBedBotY}`;
+      bedPoly.setAttribute('points', bedPoints);
+      bedPoly.setAttribute('fill', bedFill);
+      bedPoly.setAttribute('opacity', '0.8');
+      trenchGroup.appendChild(bedPoly);
+
+      const bedHatch = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      bedHatch.setAttribute('points', bedPoints);
+      bedHatch.setAttribute('fill', bedPattern);
+      trenchGroup.appendChild(bedHatch);
+
+      // Trench Cut Line (Dashed Civil Cut Line)
+      const pTrTL = `${toPxX(trenchTopLeftX)},${toPxY(groundEl)}`;
+      const pTrBL = `${toPxX(trenchBotLeftX)},${toPxY(beddingBottomEl)}`;
+      const pTrBR = `${toPxX(trenchBotRightX)},${toPxY(beddingBottomEl)}`;
+      const pTrTR = `${toPxX(trenchTopRightX)},${toPxY(groundEl)}`;
+
+      const trenchOutline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      trenchOutline.setAttribute('points', `${pTrTL} ${pTrBL} ${pTrBR} ${pTrTR}`);
+      trenchOutline.setAttribute('fill', 'none');
+      trenchOutline.setAttribute('stroke', '#f59e0b');
+      trenchOutline.setAttribute('stroke-width', '2');
+      trenchOutline.setAttribute('stroke-dasharray', '6,4');
+      trenchGroup.appendChild(trenchOutline);
+
+      viewportGroup.appendChild(trenchGroup);
+
+      // --- D. DRAW PIPES & WATER LEVEL ---
+      let pipeGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+      // Calculate center X coordinates for each pipe barrel
+      const startX = -totalPipesWidth / 2 + outerW / 2;
+
+      for (let i = 0; i < numPipes; i++) {
+        const cx = startX + i * (outerW + pipeSpacing);
+        const pCx = toPxX(cx);
+
+        if (currentShape === 'circular') {
+          const cy = centerlineEl;
+          const pCy = toPxY(cy);
+          const rOut = toLen(outerW / 2);
+          const rIn = toLen(innerW / 2);
+
+          // Outer Concrete Circle
+          const outerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          outerCircle.setAttribute('cx', pCx);
+          outerCircle.setAttribute('cy', pCy);
+          outerCircle.setAttribute('r', rOut);
+          outerCircle.setAttribute('fill', '#64748b');
+          outerCircle.setAttribute('stroke', '#cbd5e1');
+          outerCircle.setAttribute('stroke-width', '2');
+          pipeGroup.appendChild(outerCircle);
+
+          // Hatch on wall
+          const hatchCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          hatchCircle.setAttribute('cx', pCx);
+          hatchCircle.setAttribute('cy', pCy);
+          hatchCircle.setAttribute('r', rOut);
+          hatchCircle.setAttribute('fill', 'url(#pat_concrete)');
+          pipeGroup.appendChild(hatchCircle);
+
+          // Inner Hole Void Circle
+          const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          innerCircle.setAttribute('cx', pCx);
+          innerCircle.setAttribute('cy', pCy);
+          innerCircle.setAttribute('r', rIn);
+          innerCircle.setAttribute('fill', '#0f172a'); // Interior void dark
+          innerCircle.setAttribute('stroke', '#94a3b8');
+          innerCircle.setAttribute('stroke-width', '1.5');
+          pipeGroup.appendChild(innerCircle);
+
+          // Water Layer Inside Circular Pipe centered strictly on (pCx, pCy)
+          if (waterLevelPct > 0 && rIn > 0) {
+            const clampedPct = Math.max(0, Math.min(100, waterLevelPct));
+            const waterHWorld = (clampedPct / 100) * innerW;
+            const waterYWorld = innerInvertEl + waterHWorld;
+            const pWaterY = toPxY(waterYWorld);
+            const pInnerInvertY = toPxY(innerInvertEl);
+            const waterRectH = Math.max(0, pInnerInvertY - pWaterY);
+
+            const clipId = `pipeClip_circ_${i}`;
+            const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+            clipPath.setAttribute('id', clipId);
+            const clipCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            clipCircle.setAttribute('cx', pCx);
+            clipCircle.setAttribute('cy', pCy);
+            clipCircle.setAttribute('r', rIn);
+            clipPath.appendChild(clipCircle);
+            document.getElementById('svgDefs').appendChild(clipPath);
+
+            const waterClippedGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            waterClippedGroup.setAttribute('clip-path', `url(#${clipId})`);
+
+            const waterRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            waterRect.setAttribute('x', pCx - rIn - 2);
+            waterRect.setAttribute('y', pWaterY);
+            waterRect.setAttribute('width', (rIn * 2) + 4);
+            waterRect.setAttribute('height', waterRectH);
+            waterRect.setAttribute('fill', '#0284c7');
+            waterRect.setAttribute('opacity', '0.65');
+            waterClippedGroup.appendChild(waterRect);
+
+            // Water Surface Line centered on pCx
+            const wLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            wLine.setAttribute('x1', pCx - rIn);
+            wLine.setAttribute('y1', pWaterY);
+            wLine.setAttribute('x2', pCx + rIn);
+            wLine.setAttribute('y2', pWaterY);
+            wLine.setAttribute('stroke', '#38bdf8');
+            wLine.setAttribute('stroke-width', '1.75');
+            waterClippedGroup.appendChild(wLine);
+
+            pipeGroup.appendChild(waterClippedGroup);
+          }
+
+          // Centerline Cross Marker
+          const clGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          clGroup.setAttribute('stroke', '#38bdf8');
+          clGroup.setAttribute('stroke-width', '1');
+          clGroup.setAttribute('stroke-dasharray', '5,3');
+          clGroup.setAttribute('opacity', '0.6');
+
+          const lineV = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          lineV.setAttribute('x1', pCx); lineV.setAttribute('y1', pCy - rOut - 10);
+          lineV.setAttribute('x2', pCx); lineV.setAttribute('y2', pCy + rOut + 10);
+
+          const lineH = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          lineH.setAttribute('x1', pCx - rOut - 10); lineH.setAttribute('y1', pCy);
+          lineH.setAttribute('x2', pCx + rOut + 10); lineH.setAttribute('y2', pCy);
+
+          clGroup.appendChild(lineV);
+          clGroup.appendChild(lineH);
+          pipeGroup.appendChild(clGroup);
+
+        } else {
+          // BOX CULVERT
+          const pOuterX = toPxX(cx - outerW / 2);
+          const pOuterY = toPxY(outerCrownEl);
+          const pOuterW = toLen(outerW);
+          const pOuterH = toLen(outerH);
+
+          const pInnerX = toPxX(cx - innerW / 2);
+          const pInnerY = toPxY(innerCrownEl);
+          const pInnerW = toLen(innerW);
+          const pInnerH = toLen(innerH);
+
+          // Outer Box Rect
+          const outerBox = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          outerBox.setAttribute('x', pOuterX);
+          outerBox.setAttribute('y', pOuterY);
+          outerBox.setAttribute('width', pOuterW);
+          outerBox.setAttribute('height', pOuterH);
+          outerBox.setAttribute('fill', '#64748b');
+          outerBox.setAttribute('stroke', '#cbd5e1');
+          outerBox.setAttribute('stroke-width', '2');
+          pipeGroup.appendChild(outerBox);
+
+          // Box Concrete Hatch
+          const hatchBox = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          hatchBox.setAttribute('x', pOuterX);
+          hatchBox.setAttribute('y', pOuterY);
+          hatchBox.setAttribute('width', pOuterW);
+          hatchBox.setAttribute('height', pOuterH);
+          hatchBox.setAttribute('fill', 'url(#pat_concrete)');
+          pipeGroup.appendChild(hatchBox);
+
+          // Inner Void Box Rect
+          const innerBox = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          innerBox.setAttribute('x', pInnerX);
+          innerBox.setAttribute('y', pInnerY);
+          innerBox.setAttribute('width', pInnerW);
+          innerBox.setAttribute('height', pInnerH);
+          innerBox.setAttribute('fill', '#0f172a');
+          innerBox.setAttribute('stroke', '#94a3b8');
+          innerBox.setAttribute('stroke-width', '1.5');
+          pipeGroup.appendChild(innerBox);
+
+          // Water Level Inside Box Culvert centered strictly on pInnerX .. pInnerX + pInnerW
+          if (waterLevelPct > 0 && pInnerH > 0) {
+            const clampedPct = Math.max(0, Math.min(100, waterLevelPct));
+            const waterHWorld = (clampedPct / 100) * innerH;
+            const pWaterY = toPxY(innerInvertEl + waterHWorld);
+            const pInnerInvertY = toPxY(innerInvertEl);
+            const waterRectH = Math.max(0, pInnerInvertY - pWaterY);
+
+            const clipId = `pipeClip_box_${i}`;
+            const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+            clipPath.setAttribute('id', clipId);
+            const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            clipRect.setAttribute('x', pInnerX);
+            clipRect.setAttribute('y', pInnerY);
+            clipRect.setAttribute('width', pInnerW);
+            clipRect.setAttribute('height', pInnerH);
+            clipPath.appendChild(clipRect);
+            document.getElementById('svgDefs').appendChild(clipPath);
+
+            const waterClippedGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            waterClippedGroup.setAttribute('clip-path', `url(#${clipId})`);
+
+            const waterRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            waterRect.setAttribute('x', pInnerX);
+            waterRect.setAttribute('y', pWaterY);
+            waterRect.setAttribute('width', pInnerW);
+            waterRect.setAttribute('height', waterRectH);
+            waterRect.setAttribute('fill', '#0284c7');
+            waterRect.setAttribute('opacity', '0.65');
+            waterClippedGroup.appendChild(waterRect);
+
+            // Water Surface Line aligned to inner box width
+            const wLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            wLine.setAttribute('x1', pInnerX);
+            wLine.setAttribute('y1', pWaterY);
+            wLine.setAttribute('x2', pInnerX + pInnerW);
+            wLine.setAttribute('y2', pWaterY);
+            wLine.setAttribute('stroke', '#38bdf8');
+            wLine.setAttribute('stroke-width', '1.75');
+            waterClippedGroup.appendChild(wLine);
+
+            pipeGroup.appendChild(waterClippedGroup);
+          }
+        }
+      }
+
+      viewportGroup.appendChild(pipeGroup);
+
+      // --- E. ELEVATION AXIS & CALLOUT MARKERS ---
+      if (showCallouts) {
+        let calloutGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+        const axisLeftX = toPxX(minX + 0.5);
+
+        // Axis Vertical Line
+        const axisLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        axisLine.setAttribute('x1', axisLeftX);
+        axisLine.setAttribute('y1', toPxY(groundEl + 0.3));
+        axisLine.setAttribute('x2', axisLeftX);
+        axisLine.setAttribute('y2', toPxY(bottomSoilEl));
+        axisLine.setAttribute('stroke', '#94a3b8');
+        axisLine.setAttribute('stroke-width', '2');
+        calloutGroup.appendChild(axisLine);
+
+        // Function to create standard elevation callout line & badge
+        function drawElevationCallout(elev, labelText, colorClass, alignLeft = true) {
+          const py = toPxY(elev);
+
+          // Reference dash line across drawing
+          const refLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          refLine.setAttribute('x1', axisLeftX);
+          refLine.setAttribute('y1', py);
+          refLine.setAttribute('x2', toPxX(maxX - 0.5));
+          refLine.setAttribute('y2', py);
+          refLine.setAttribute('stroke', colorClass);
+          refLine.setAttribute('stroke-width', '1');
+          refLine.setAttribute('stroke-dasharray', '4,3');
+          refLine.setAttribute('opacity', '0.7');
+          calloutGroup.appendChild(refLine);
+
+          // Marker triangle on axis
+          const tri = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+          tri.setAttribute('points', `${axisLeftX},${py} ${axisLeftX-8},${py-5} ${axisLeftX-8},${py+5}`);
+          tri.setAttribute('fill', colorClass);
+          calloutGroup.appendChild(tri);
+
+          // Text Label & Elevation Badge
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', axisLeftX - 12);
+          text.setAttribute('y', py + 4);
+          text.setAttribute('fill', colorClass);
+          text.setAttribute('font-size', '11');
+          text.setAttribute('font-weight', 'bold');
+          text.setAttribute('text-anchor', 'end');
+          text.textContent = `${labelText} ${elev >= 0 ? '+' : ''}${formatElevationVal(elev, elevDec)} ม.`;
+          calloutGroup.appendChild(text);
+        }
+
+        // Key Elevation Callouts
+        drawElevationCallout(groundEl, 'ระดับผิวดิน Top Ground', '#f59e0b');
+        drawElevationCallout(outerCrownEl, 'หลังท่อนอก Crown El.', '#60a5fa');
+        drawElevationCallout(innerCrownEl, 'หลังท่อใน Soffit El.', '#cbd5e1');
+        drawElevationCallout(centerlineEl, 'แกนท่อ Axis El.', '#a855f7');
+        drawElevationCallout(innerInvertEl, 'ท้องท่อใน Invert El.', '#34d399');
+        drawElevationCallout(outerInvertEl, 'ท้องท่อนอก Out Invert', '#94a3b8');
+        drawElevationCallout(beddingBottomEl, 'ฐานรองท่อ Bedding Bot', '#f43f5e');
+
+        viewportGroup.appendChild(calloutGroup);
+      }
+
+      // --- F. DIMENSION LINES (SOIL COVER & PIPE DIMENSIONS) ---
+      if (showDimensions) {
+        let dimGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+
+        // 1. Soil Cover Depth Dimension Line (Vertical)
+        const coverX = toPxX(totalPipesWidth / 2 + 0.8);
+        const pGroundY = toPxY(groundEl);
+        const pCrownY = toPxY(outerCrownEl);
+
+        const dimLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        dimLine.setAttribute('x1', coverX); dimLine.setAttribute('y1', pGroundY);
+        dimLine.setAttribute('x2', coverX); dimLine.setAttribute('y2', pCrownY);
+        dimLine.setAttribute('stroke', '#38bdf8');
+        dimLine.setAttribute('stroke-width', '1.5');
+        dimGroup.appendChild(dimLine);
+
+        // Arrows top & bottom
+        function drawArrow(x, y, isUp) {
+          const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+          const dy = isUp ? -6 : 6;
+          arrow.setAttribute('points', `${x},${y} ${x-4},${y+dy} ${x+4},${y+dy}`);
+          arrow.setAttribute('fill', '#38bdf8');
+          dimGroup.appendChild(arrow);
+        }
+        drawArrow(coverX, pGroundY, false);
+        drawArrow(coverX, pCrownY, true);
+
+        // Text Badge
+        const coverText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        coverText.setAttribute('x', coverX + 8);
+        coverText.setAttribute('y', pGroundY + (pCrownY - pGroundY) / 2 + 4);
+        coverText.setAttribute('fill', '#38bdf8');
+        coverText.setAttribute('font-size', '11');
+        coverText.setAttribute('font-weight', 'bold');
+        coverText.textContent = `ดินถมหลังท่อ H = ${formatElevationVal(coverDepth, elevDec)} ม.`;
+        dimGroup.appendChild(coverText);
+
+        viewportGroup.appendChild(dimGroup);
+      }
+
+      // --- G. CROSSHAIR ELEMENTS FOR MOUSE INSPECTOR ---
+      let inspectorGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      inspectorGroup.setAttribute('id', 'inspectorGroup');
+      inspectorGroup.setAttribute('display', 'none');
+
+      const chH = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      chH.setAttribute('id', 'crosshairH');
+      chH.setAttribute('x1', 0); chH.setAttribute('x2', svgW);
+      chH.setAttribute('stroke', '#38bdf8');
+      chH.setAttribute('stroke-width', '1');
+      chH.setAttribute('stroke-dasharray', '3,3');
+      inspectorGroup.appendChild(chH);
+
+      const chV = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      chV.setAttribute('id', 'crosshairV');
+      chV.setAttribute('y1', 0); chV.setAttribute('y2', svgH);
+      chV.setAttribute('stroke', '#38bdf8');
+      chV.setAttribute('stroke-width', '1');
+      chV.setAttribute('stroke-dasharray', '3,3');
+      inspectorGroup.appendChild(chV);
+
+      const chDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      chDot.setAttribute('id', 'crosshairDot');
+      chDot.setAttribute('r', '4');
+      chDot.setAttribute('fill', '#38bdf8');
+      chDot.setAttribute('stroke', '#ffffff');
+      chDot.setAttribute('stroke-width', '1.5');
+      inspectorGroup.appendChild(chDot);
+
+      viewportGroup.appendChild(inspectorGroup);
+    }
+
+    // --- INTERACTIVE MOUSE & TOUCH INSPECTOR LOGIC ---
+    function setupInteractiveEvents() {
+      const container = document.getElementById('svgContainer');
+      const hud = document.getElementById('inspectorHUD');
+
+      container.addEventListener('mousemove', (e) => {
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        if (isDragging) {
+          panX += (e.clientX - dragStartX);
+          panY += (e.clientY - dragStartY);
+          dragStartX = e.clientX;
+          dragStartY = e.clientY;
+          updateDraw();
+          return;
+        }
+
+        if (!currentCalcState) return;
+
+        // Calculate world coordinates from mouse position
+        const worldX = currentCalcState.fromPxX(mouseX);
+        const worldY = currentCalcState.fromPxY(mouseY);
+        const depth = currentCalcState.groundEl - worldY;
+
+        // Update Crosshair Lines
+        const inspectorGroup = document.getElementById('inspectorGroup');
+        const chH = document.getElementById('crosshairH');
+        const chV = document.getElementById('crosshairV');
+        const chDot = document.getElementById('crosshairDot');
+
+        if (inspectorGroup) {
+          inspectorGroup.setAttribute('display', 'block');
+          chH.setAttribute('y1', mouseY); chH.setAttribute('y2', mouseY);
+          chV.setAttribute('x1', mouseX); chV.setAttribute('x2', mouseX);
+          chDot.setAttribute('cx', mouseX); chDot.setAttribute('cy', mouseY);
+        }
+
+        // Determine Layer / Region under Cursor
+        let layerName = 'เหนือผิวดิน (Above Ground)';
+        if (depth >= 0) {
+          let accumDepth = 0;
+          let found = false;
+
+          for (let l of soilLayers) {
+            accumDepth += l.thickness;
+            if (depth <= accumDepth) {
+              layerName = l.name;
+              found = true;
+              break;
+            }
+          }
+          if (!found) layerName = 'ชั้นดินฐานราก (Deep Subsoil)';
+        }
+
+        // Check if cursor is inside pipe
+        if (worldY <= currentCalcState.outerCrownEl && worldY >= currentCalcState.outerInvertEl) {
+          const startX = -currentCalcState.totalPipesWidth / 2 + currentCalcState.outerW / 2;
+          for (let i = 0; i < currentCalcState.numPipes; i++) {
+            const cx = startX + i * (currentCalcState.outerW + currentCalcState.pipeSpacing);
+            const dist = Math.abs(worldX - cx);
+            if (dist <= currentCalcState.outerW / 2) {
+              if (worldY <= currentCalcState.innerCrownEl && worldY >= currentCalcState.innerInvertEl && dist <= currentCalcState.innerW / 2) {
+                layerName = 'ภายในท่อ (Pipe Interior Void)';
+              } else {
+                layerName = 'ผนังท่อคอนกรีต (Concrete Wall)';
+              }
+            }
+          }
+        }
+
+        // Check if cursor is in bedding layer
+        if (worldY < currentCalcState.outerInvertEl && worldY >= currentCalcState.beddingBottomEl) {
+          if (Math.abs(worldX) <= currentCalcState.totalPipesWidth / 2 + 0.5) {
+            layerName = 'ชั้นวัสดุรองพื้นท่อ (Pipe Bedding Layer)';
+          }
+        }
+
+        // Update HUD display text
+        const d = currentCalcState.elevDec || 2;
+        hud.classList.remove('hidden');
+        document.getElementById('hudElev').innerText = `${worldY >= 0 ? '+' : ''}${formatElevationVal(worldY, d)} m MSL`;
+        document.getElementById('hudDepth').innerText = `${formatElevationVal(depth, d)} m`;
+        document.getElementById('hudDistX').innerText = `${formatElevationVal(worldX, d)} m`;
+        document.getElementById('hudLayerType').innerText = layerName;
+      });
+
+      container.addEventListener('mouseleave', () => {
+        const inspectorGroup = document.getElementById('inspectorGroup');
+        if (inspectorGroup) inspectorGroup.setAttribute('display', 'none');
+        hud.classList.add('hidden');
+        isDragging = false;
+      });
+
+      // Pan & Drag Functionality
+      container.addEventListener('mousedown', (e) => {
+        if (e.button === 0) { // Left click
+          isDragging = true;
+          dragStartX = e.clientX;
+          dragStartY = e.clientY;
+        }
+      });
+
+      container.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+
+      // Mouse Wheel Zoom
+      container.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        if (e.deltaY < 0) {
+          zoomIn();
+        } else {
+          zoomOut();
+        }
+      }, { passive: false });
+    }
+
+    // --- INITIALIZE APPLICATION ---
+    window.addEventListener('DOMContentLoaded', () => {
+      initSVGPatterns();
+      renderSoilLayersList();
+      setupInteractiveEvents();
+      setSyncMode(syncMode);
+      updateDraw();
+    });
+
+    // --- ZOOM CONTROLS ---
+    function zoomIn() {
+      zoomLevel = Math.min(zoomLevel * 1.2, 4.0);
+      updateDraw();
+    }
+
+    function zoomOut() {
+      zoomLevel = Math.max(zoomLevel / 1.2, 0.4);
+      updateDraw();
+    }
+
+    function resetZoom() {
+      zoomLevel = 1.0;
+      panX = 0;
+      panY = 0;
+      updateDraw();
+      showToast('รีเซ็ตมุมมองเรียบร้อย', 'info');
+    }
+
+    // --- EXPORT FUNCTIONALITIES ---
+    function exportSVG() {
+      const svg = document.getElementById('mainSVG');
+      const serializer = new XMLSerializer();
+      let source = serializer.serializeToString(svg);
+      
+      if (!source.match(/^<svg[^>]+xmlns="http\:\/\/www\.w3\.org\/2000\/svg"/)) {
+        source = source.replace(/^<svg/, '<svg xmlns="http://www.w3.org/2000/svg"');
+      }
+
+      const blob = new Blob([source], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `pipe_cross_section_${Date.now()}.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('ส่งออกไฟล์ SVG สำเร็จ', 'success');
+    }
+
+    function exportPNG() {
+      const svg = document.getElementById('mainSVG');
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svg);
+
+      const canvas = document.createElement('canvas');
+      const rect = document.getElementById('svgContainer').getBoundingClientRect();
+      canvas.width = rect.width * 2; // High DPI 2x scale
+      canvas.height = rect.height * 2;
+      const ctx = canvas.getContext('2d');
+
+      const img = new Image();
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+
+      img.onload = function () {
+        ctx.fillStyle = '#0f172a'; // CAD Dark Background
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const pngUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = pngUrl;
+        link.download = `pipe_cross_section_${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showToast('ส่งออกภาพ PNG ความละเอียดสูงสำเร็จ', 'success');
+      };
+
+      img.src = url;
+    }
+
+    // --- TOAST NOTIFICATIONS ---
+    function showToast(msg, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      const toast = document.createElement('div');
+      
+      let bg = 'bg-slate-800 border-slate-700 text-slate-200';
+      let icon = 'fa-info-circle text-blue-400';
+      if (type === 'success') {
+        bg = 'bg-slate-800 border-emerald-500/50 text-emerald-200';
+        icon = 'fa-circle-check text-emerald-400';
+      } else if (type === 'error') {
+        bg = 'bg-slate-800 border-rose-500/50 text-rose-200';
+        icon = 'fa-triangle-exclamation text-rose-400';
+      }
+
+      toast.className = `flex items-center space-x-2 border text-xs px-3.5 py-2.5 rounded-xl shadow-2xl backdrop-blur transition-all transform translate-y-2 opacity-0 ${bg}`;
+      toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${msg}</span>`;
+
+      container.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // Recalculate layout on window resize
+    window.addEventListener('resize', () => {
+      updateDraw();
+    });
+  </script>
+</body>
+</html>
